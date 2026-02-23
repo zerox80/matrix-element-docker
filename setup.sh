@@ -137,6 +137,7 @@ try:
     # Enable MSCs for Element Call
     content += '\nexperimental_features:\n  msc3401_enabled: true\n  msc3843_enabled: true\n  msc4143_enabled: true\n'
     content += '\nmatrix_rtc:\n  transports:\n    - type: livekit\n      livekit_service_url: \"https://{domain_livekit}\"\n'
+    content += '\n# Guest access for public video conference links\nallow_guest_access: true\n'
 
     with open(config_path, 'w') as f:
         f.write(content)
