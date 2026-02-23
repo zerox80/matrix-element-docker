@@ -172,6 +172,23 @@ services:
     networks:
       - traefik-net
 
+  element-call:
+    image: ghcr.io/element-hq/element-call:latest
+    container_name: element-call
+    restart: unless-stopped
+    volumes:
+      - ./element-call-config.json:/app/config.json:ro
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-net"
+      - "traefik.http.routers.element-call.rule=Host(`${DOMAIN_CALL}`)"
+      - "traefik.http.routers.element-call.entrypoints=web,websecure"
+      - "traefik.http.routers.element-call.service=element-call-service"
+      - "traefik.http.routers.element-call.tls=false"
+      - "traefik.http.services.element-call-service.loadbalancer.server.port=8080"
+    networks:
+      - traefik-net
+
 networks:
   traefik-net:
     driver: bridge

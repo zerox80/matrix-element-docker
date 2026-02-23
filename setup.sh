@@ -56,8 +56,8 @@ cat > config.json <<EOF
         "preferred_domain": "meet.element.io"
     },
     "element_call": {
-        "url": "https://${DOMAIN_ELEMENT}",
-        "use_exclusively": false
+        "url": "https://${DOMAIN_CALL}",
+        "use_exclusively": true
     },
     "features": {
         "feature_group_calls": true,
@@ -188,6 +188,23 @@ keys:
   "${LIVEKIT_API_KEY}": "${LIVEKIT_API_SECRET}"
 EOF
 
+# Element Call Standalone configuration
+echo "Generating Element Call configuration..."
+cat > element-call-config.json <<EOF
+{
+    "default_server_config": {
+        "m.homeserver": {
+            "base_url": "https://${DOMAIN_MATRIX}",
+            "server_name": "${DOMAIN_MATRIX}"
+        }
+    },
+    "livekit": {
+        "livekit_service_url": "https://${DOMAIN_LIVEKIT}"
+    },
+    "brand": "Element Call"
+}
+EOF
+
 # Permissions
 echo "Applying filesystem permissions..."
 sudo chown -R 991:991 synapse-data 2>/dev/null || true
@@ -195,11 +212,12 @@ sudo chown -R $USER:$USER .well-known 2>/dev/null || true
 
 # Virtual Host deployment
 echo "Updating Nginx configuration templates..."
-for f in nginx-matrix.conf nginx-element.conf nginx-livekit.conf; do
+for f in nginx-matrix.conf nginx-element.conf nginx-livekit.conf nginx-element-call.conf; do
     if [ -f "$f" ]; then
         sed -i "s/matrix.example.com/${DOMAIN_MATRIX}/g" "$f" 2>/dev/null
         sed -i "s/element.example.com/${DOMAIN_ELEMENT}/g" "$f" 2>/dev/null
         sed -i "s/livekit.example.com/${DOMAIN_LIVEKIT}/g" "$f" 2>/dev/null
+        sed -i "s/call.example.com/${DOMAIN_CALL}/g" "$f" 2>/dev/null
     fi
 done
 
