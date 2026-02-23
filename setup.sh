@@ -40,6 +40,7 @@ mkdir -p synapse-data
 
 # Client configuration generation
 echo "Generating Element Web configuration..."
+rm -rf config.json livekit.yaml element-call-config.json
 cat > config.json <<EOF
 {
     "default_server_config": {
