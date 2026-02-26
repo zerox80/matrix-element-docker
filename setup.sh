@@ -33,7 +33,11 @@ sed -i "s/^EXTERNAL_IP=.*/EXTERNAL_IP=$EXTERNAL_IP/" .env 2>/dev/null || echo "E
 
 # Cleanup phase
 echo "Cleaning up existing environment..."
-docker compose down -v
+if [ -n "$COMPOSE_FILE" ]; then
+    docker compose down -v
+else
+    docker compose down -v
+fi
 rm -rf synapse-data
 rm -rf config.json
 mkdir -p synapse-data
@@ -223,4 +227,9 @@ for f in nginx-matrix.conf nginx-element.conf nginx-livekit.conf nginx-element-c
 done
 
 echo "Deployment preparation finished."
+if [[ "$COMPOSE_FILE" == *"element-call/call.yml"* ]]; then
+    echo "Element Call override is ENABLED."
+else
+    echo "Element Call override is DISABLED."
+fi
 echo "Execute 'docker compose up -d' to start the services."
