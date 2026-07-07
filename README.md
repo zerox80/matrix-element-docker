@@ -109,7 +109,9 @@ Set it back to `INFO` when finished and recreate Traefik again. `DEBUG` logs eve
 
 ## Reverse Proxy Client IPs
 
-This stack assumes an optional host-level reverse proxy such as nginx can sit in front of Traefik and proxy to the loopback-bound Traefik ports. Traefik trusts forwarded headers only from `127.0.0.1`, so Synapse can store the real client IP from `X-Forwarded-For` without trusting spoofed headers from the public internet.
+This stack assumes an optional host-level reverse proxy such as nginx can sit in front of Traefik and proxy to the loopback-bound Traefik ports. Traefik trusts forwarded headers from `TRAEFIK_TRUSTED_PROXY_IPS`, which defaults to `127.0.0.1/32,172.16.0.0/12`. The Docker bridge proxy can appear as a `172.x.x.x` source even when nginx connects to `127.0.0.1`, so this allows Synapse to store the real client IP from `X-Forwarded-For` instead of the Docker gateway IP.
+
+If Traefik is exposed directly to the public internet without a host reverse proxy, restrict `TRAEFIK_TRUSTED_PROXY_IPS` to only the proxy IPs you actually control.
 
 To check what Synapse records for recent clients:
 
