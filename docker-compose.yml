@@ -13,7 +13,7 @@ services:
     environment:
       - DOCKER_HOST=unix:///var/run/docker.sock
     command:
-      - "--log.level=DEBUG"
+      - "--log.level=${TRAEFIK_LOG_LEVEL:-INFO}"
       - "--api.insecure=true"
       - "--providers.docker=true"
       - "--providers.docker.endpoint=unix:///var/run/docker.sock"
