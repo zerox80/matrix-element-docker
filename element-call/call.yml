@@ -3,12 +3,28 @@ services:
     image: livekit/livekit-server:latest
     container_name: livekit
     restart: unless-stopped
-    command: --config /etc/livekit.yaml
-    volumes:
-      - ./livekit.yaml:/etc/livekit.yaml:ro
     environment:
-      - LIVEKIT_API_KEY=${LIVEKIT_API_KEY}
-      - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET}
+      LIVEKIT_CONFIG: |
+        log_level: ${LIVEKIT_LOG_LEVEL:-info}
+        port: 7880
+        rtc:
+          tcp_port: 7881
+          port_range_start: 50000
+          port_range_end: 50050
+          use_external_ip: true
+          allow_tcp_fallback: true
+          turn_servers:
+            - host: ${DOMAIN_LIVEKIT}
+              port: 5349
+              protocol: tls
+              secret: "${TURN_SECRET}"
+              ttl: 3600
+        room:
+          auto_create: false
+        keys:
+          "${LIVEKIT_API_KEY}": "${LIVEKIT_API_SECRET}"
     ports:
       - "7880:7880"
       - "7881:7881"

@@ -1,10 +1,11 @@
 #!/bin/bash
 # setup.sh - Infrastructure initialization and configuration generator
 
+set -e
+
 echo "WARNING: setup.sh is destructive and intended for initial setup only."
 echo "It can recreate Synapse configuration and, when explicitly confirmed, remove existing homeserver and database data."
-echo "Press Ctrl+C to abort or Enter to continue with safety checks."
-read
+echo "Do not run this on an existing homeserver unless you intentionally want to rebuild it."
 
 # Load configuration from .env
 if [ ! -f .env ]; then
@@ -144,6 +145,7 @@ if external_ip_v6:
     v6_formatted = f'[{external_ip_v6}]' if ':' in external_ip_v6 and not external_ip_v6.startswith('[') else external_ip_v6
     turn_uris.append(f'turn:{v6_formatted}:3478?transport=udp')
     turn_uris.append(f'turn:{v6_formatted}:3478?transport=tcp')
+turn_uris.append(f'turns:{domain_livekit}:5349?transport=tcp')
 
 try:
     with open(config_path, 'r') as f:
@@ -226,8 +228,14 @@ rtc:
   tcp_port: 7881
   port_range_start: 50000
   port_range_end: 50050
-  node_ip: "${EXTERNAL_IP}"
-  use_external_ip: false
+  use_external_ip: true
+  allow_tcp_fallback: true
+  turn_servers:
+    - host: ${DOMAIN_LIVEKIT}
+      port: 5349
+      protocol: tls
+      secret: "${TURN_SECRET}"
+      ttl: 3600
 room:
   auto_create: false
 keys:

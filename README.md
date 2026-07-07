@@ -38,15 +38,18 @@ Follow these steps to initialize and start the services:
     * It is destructive and intended for initial setup only. If existing Synapse or database data is detected, it aborts unless you explicitly confirm with `DELETE_EXISTING_DATA`.
 6. Start the stack: `docker compose up -d`
 
-## Element Call
+## Enabling Element Call
 
-Element Call is enabled through the optional Compose override at `element-call/call.yml`. On Linux and macOS, set this in `.env`:
+Element Call is provided by the optional Compose override in `element-call/call.yml`.
+Enable it in `.env` on Linux/macOS with:
 
-```env
+```bash
 COMPOSE_FILE=docker-compose.yml:element-call/call.yml
 ```
 
-Then validate that Compose includes the Element Call services:
+Windows PowerShell users may need semicolon syntax or explicit `-f` flags depending on their Docker Compose environment.
+
+Validate that the override is active:
 
 ```bash
 docker compose config --services
@@ -68,6 +71,15 @@ docker compose -f docker-compose.yml -f element-call/call.yml up -d
 
 Windows PowerShell users may need semicolon syntax in `COMPOSE_FILE` or the explicit `-f` flags above, depending on their Docker Compose environment.
 
+For an existing server checkout, update and restart with:
+
+```bash
+git pull
+docker compose build
+docker compose down
+docker compose up -d
+```
+
 ## Image Versions
 
 Traefik is pinned through `TRAEFIK_VERSION` in `.env`. Some other images still use `latest` by default for compatibility with the current stack. For production deployments, review and pin those images to tested versions before upgrading so container updates do not change behavior unexpectedly.
@@ -78,18 +90,22 @@ After setup, these commands are useful for checking the generated Compose config
 
 ```bash
 docker compose config --services
-docker compose config | grep -A10 -B3 '/etc/livekit.yaml'
+docker compose config | grep -A20 -B5 'LIVEKIT_CONFIG'
+docker compose logs --tail=100 coturn
 docker compose logs --tail=100 livekit
 docker ps --filter name=livekit
+ss -lntup | grep -E ':(3478|5349|7880|7881|50000|49152)'
 ```
 
-The generated Compose config should mount the repository root `livekit.yaml` file to `/etc/livekit.yaml`, and the repository root `element-call-config.json` file to `/app/config.json`.
+`coturn` should listen on `3478` and `5349`, and LiveKit join responses should advertise a TURN/TLS server for `${DOMAIN_LIVEKIT}:5349`.
 
 ## Troubleshooting
 
 ### LiveKit reports `read /etc/livekit.yaml: is a directory`
 
-This error means Docker mounted a directory at `/etc/livekit.yaml` instead of the generated `livekit.yaml` config file. Check the merged Compose config and the running container mounts:
+This error means Docker mounted a directory at `/etc/livekit.yaml` instead of the generated `livekit.yaml` config file. The current stack configures LiveKit through `LIVEKIT_CONFIG` to avoid stale or mis-mounted `livekit.yaml` files, but older deployments can still hit this.
+
+Check the merged Compose config and the running container mounts:
 
 ```bash
 docker compose config | grep -A10 -B3 '/etc/livekit.yaml'
@@ -114,7 +130,66 @@ Use the provided `manage.sh` script to perform common administrative tasks:
 
 ## Connectivity Notes
 
-The stack is configured to support dual-stack (IPv4 and IPv6) environments out of the box. The CoTURN service runs in host network mode to ensure maximum compatibility for WebRTC media relay. If users experience media connection issues, verify that the required UDP ports (3478, 49152 to 49162, and 50000 to 50050) are open in your server provider router settings.
+The stack is configured to support dual-stack (IPv4 and IPv6) environments out of the box. The CoTURN service runs in host network mode to ensure maximum compatibility for WebRTC media relay.
+
+For restrictive networks, LiveKit advertises TURN/TLS on `${DOMAIN_LIVEKIT}:5349` in addition to direct UDP/TCP candidates. CoTURN expects readable certificates at:
+
+```text
+/etc/letsencrypt/live/${DOMAIN_LIVEKIT}/fullchain.pem
+/etc/letsencrypt/live/${DOMAIN_LIVEKIT}/privkey.pem
+```
+
+Verify that the required ports are open in your server provider firewall:
+
+```text
+3478/tcp and 3478/udp
+5349/tcp
+49152-49162/udp
+7880/tcp and 7881/tcp
+50000-50050/udp
+```
+
+Port `443/tcp` is usually already used by nginx or Traefik. Use `5349/tcp` for TURN/TLS unless you have a separate IP or a dedicated TURN hostname that can own `443/tcp`.
+
+## Validation
+
+After changing the stack, run:
+
+```bash
+docker compose config --services
+docker compose config | grep -A20 -B5 'LIVEKIT_CONFIG'
+docker compose logs --tail=100 coturn
+docker compose logs --tail=100 livekit
+docker ps --filter name=livekit
+ss -lntup | grep -E ':(3478|5349|7880|7881|50000|49152)'
+```
+
+`coturn` should listen on `3478` and `5349`, and LiveKit join responses should advertise a TURN/TLS server for `${DOMAIN_LIVEKIT}:5349`.
+
+## Troubleshooting
+
+### `read /etc/livekit.yaml: is a directory`
+
+This means Docker mounted a directory instead of the intended LiveKit config file. The current stack configures LiveKit through `LIVEKIT_CONFIG` to avoid stale or mis-mounted `livekit.yaml` files, but older deployments can still hit this.
+
+Inspect the generated Compose config and container mounts:
+
+```bash
+docker compose config | grep -A10 -B3 '/etc/livekit.yaml'
+docker inspect livekit --format '{{range .Mounts}}{{println .Source "->" .Destination "type=" .Type}}{{end}}'
+file livekit.yaml
+docker compose stop livekit && docker compose rm -f livekit && docker compose up -d livekit
+```
+
+### Calls stay on waiting for media
+
+If messages arrive but calls hang, check whether the remote user appears in both JWT and LiveKit logs:
+
+```bash
+docker compose logs -f lk-jwt-service livekit | grep -Ei 'majid|LiveKit room|participant|ice|dtls|timeout|error|connection'
+```
+
+If the user reaches `lk-jwt-service` but never appears as a LiveKit participant, verify TURN/TLS on `5349/tcp` and the provider firewall first.
 
 ## License
 
