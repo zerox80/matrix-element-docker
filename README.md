@@ -82,7 +82,9 @@ docker compose up -d
 
 ## Image Versions
 
-Traefik is pinned through `TRAEFIK_VERSION` in `.env`. Some other images still use `latest` by default for compatibility with the current stack. For production deployments, review and pin those images to tested versions before upgrading so container updates do not change behavior unexpectedly.
+Traefik is pinned through `TRAEFIK_VERSION` in `.env`. Use Traefik `v3.6.1` or newer with Docker Engine 29+, otherwise Traefik's Docker provider can fail with `client version 1.24 is too old` and all label-based routes may return `404`.
+
+Some other images still use `latest` by default for compatibility with the current stack. For production deployments, review and pin those images to tested versions before upgrading so container updates do not change behavior unexpectedly.
 
 ## Validation
 
@@ -139,6 +141,33 @@ For restrictive networks, LiveKit advertises TURN/TLS on `${DOMAIN_LIVEKIT}:5349
 /etc/letsencrypt/live/${DOMAIN_LIVEKIT}/privkey.pem
 ```
 
+The `coturn/coturn` image runs the TURN process as UID `65534` (`nobody`). LetsEncrypt private keys are often only readable by root, so TURN/TLS can silently fail to listen on `5349/tcp` unless that UID can traverse and read the certificate files. On Debian/Ubuntu hosts, install ACL support and grant the minimum required read/traverse access:
+
+```bash
+apt update && apt install -y acl
+sudo ./fix-coturn-letsencrypt-acl.sh
+docker compose restart coturn
+```
+
+The script applies the same ACLs as these manual commands:
+
+```bash
+setfacl -m u:65534:rx /etc/letsencrypt
+setfacl -m u:65534:rx /etc/letsencrypt/live
+setfacl -m u:65534:rx /etc/letsencrypt/live/${DOMAIN_LIVEKIT}
+setfacl -m u:65534:rx /etc/letsencrypt/archive
+setfacl -m u:65534:rx /etc/letsencrypt/archive/${DOMAIN_LIVEKIT}
+setfacl -m u:65534:r /etc/letsencrypt/archive/${DOMAIN_LIVEKIT}/fullchain*.pem
+setfacl -m u:65534:r /etc/letsencrypt/archive/${DOMAIN_LIVEKIT}/privkey*.pem
+docker compose restart coturn
+```
+
+Verify from inside the container:
+
+```bash
+docker exec coturn sh -lc "test -r /etc/letsencrypt/live/${DOMAIN_LIVEKIT}/fullchain.pem && echo cert-ok || echo cert-bad; test -r /etc/letsencrypt/live/${DOMAIN_LIVEKIT}/privkey.pem && echo key-ok || echo key-bad"
+```
+
 Verify that the required ports are open in your server provider firewall:
 
 ```text
@@ -190,6 +219,42 @@ docker compose logs -f lk-jwt-service livekit | grep -Ei 'majid|LiveKit room|par
 ```
 
 If the user reaches `lk-jwt-service` but never appears as a LiveKit participant, verify TURN/TLS on `5349/tcp` and the provider firewall first.
+
+### Traefik returns `404 page not found` for all services
+
+If every domain returns `404` and Traefik logs repeat this Docker provider error:
+
+```text
+client version 1.24 is too old. Minimum supported API version is 1.40
+```
+
+Upgrade Traefik to `v3.6.1` or newer and recreate the container:
+
+```bash
+sed -i 's/^TRAEFIK_VERSION=.*/TRAEFIK_VERSION=v3.6.1/' .env
+docker compose pull traefik
+docker compose up -d --force-recreate traefik
+docker compose logs --tail=80 traefik | grep -Ei 'docker|error|provider|router'
+```
+
+The Compose file intentionally does not set `DOCKER_API_VERSION` or `DOCKER_CLIENT_API_VERSION`; Traefik should negotiate with the Docker daemon itself.
+
+### CoTURN does not listen on `5349/tcp`
+
+If `3478/tcp` and `3478/udp` work but `5349/tcp` is missing:
+
+```bash
+ss -lntup | grep -E ':(3478|5349)'
+docker compose logs --tail=120 coturn
+docker exec coturn sh -lc "test -r /etc/letsencrypt/live/${DOMAIN_LIVEKIT}/fullchain.pem && echo cert-ok || echo cert-bad; test -r /etc/letsencrypt/live/${DOMAIN_LIVEKIT}/privkey.pem && echo key-ok || echo key-bad"
+```
+
+If the container prints `cert-bad` or `key-bad`, apply the LetsEncrypt ACL commands from the Connectivity Notes section and recreate CoTURN:
+
+```bash
+docker compose up -d --force-recreate coturn
+ss -lntup | grep ':5349'
+```
 
 ## License
 

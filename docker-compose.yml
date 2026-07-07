@@ -1,6 +1,6 @@
 services:
   traefik:
-    image: traefik:${TRAEFIK_VERSION:-v3.3}
+    image: traefik:${TRAEFIK_VERSION:-v3.6.1}
     container_name: traefik
     ports:
       - "127.0.0.1:${DASHBOARD_PORT}:8080"
@@ -12,8 +12,6 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
       - DOCKER_HOST=unix:///var/run/docker.sock
-      - DOCKER_API_VERSION=1.45
-      - DOCKER_CLIENT_API_VERSION=1.45
     command:
       - "--log.level=DEBUG"
       - "--api.insecure=true"
@@ -132,7 +130,7 @@ services:
       - --min-port=49152
       - --max-port=49162
       - --no-multicast-peers
-      - --no-cli
+      - --log-file=stdout
 
 networks:
   traefik-net:
