@@ -5,7 +5,7 @@ services:
     restart: unless-stopped
     command: --config /etc/livekit.yaml
     volumes:
-      - ../livekit.yaml:/etc/livekit.yaml:ro
+      - ./livekit.yaml:/etc/livekit.yaml:ro
     environment:
       - LIVEKIT_API_KEY=${LIVEKIT_API_KEY}
       - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}
@@ -57,7 +57,7 @@ services:
     container_name: element-call
     restart: unless-stopped
     volumes:
-      - ../element-call-config.json:/app/config.json:ro
+      - ./element-call-config.json:/app/config.json:ro
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=traefik-net"

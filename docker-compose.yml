@@ -1,6 +1,6 @@
 services:
   traefik:
-    image: traefik:latest
+    image: traefik:${TRAEFIK_VERSION:-v3.3}
     container_name: traefik
     ports:
       - "127.0.0.1:${DASHBOARD_PORT}:8080"
