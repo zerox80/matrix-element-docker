@@ -107,6 +107,16 @@ docker compose up -d --force-recreate traefik
 
 Set it back to `INFO` when finished and recreate Traefik again. `DEBUG` logs every routed request and can become very noisy on an active Matrix server.
 
+## Reverse Proxy Client IPs
+
+This stack assumes an optional host-level reverse proxy such as nginx can sit in front of Traefik and proxy to the loopback-bound Traefik ports. Traefik trusts forwarded headers only from `127.0.0.1`, so Synapse can store the real client IP from `X-Forwarded-For` without trusting spoofed headers from the public internet.
+
+To check what Synapse records for recent clients:
+
+```bash
+docker exec -it synapse_db psql -U synapse -d synapse -c "SELECT user_id, ip, user_agent, to_timestamp(last_seen/1000) AS last_seen FROM user_ips ORDER BY last_seen DESC LIMIT 10;"
+```
+
 ## Validation
 
 After setup, these commands are useful for checking the generated Compose configuration and LiveKit container:

@@ -20,9 +20,12 @@ services:
       - "--providers.docker.exposedbydefault=false"
       - "--providers.docker.network=traefik-net"
       - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.forwardedHeaders.trustedIPs=127.0.0.1/32"
       - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.websecure.forwardedHeaders.trustedIPs=127.0.0.1/32"
       - "--entrypoints.websecure.http3"
       - "--entrypoints.federation.address=:8048"
+      - "--entrypoints.federation.forwardedHeaders.trustedIPs=127.0.0.1/32"
     networks:
       traefik-net:
         aliases:
