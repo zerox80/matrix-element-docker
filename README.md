@@ -36,7 +36,14 @@ Follow these steps to initialize and start the services:
     * This script automatically detects your public IPv4 and IPv6 addresses.
     * It generates the required configuration files for Synapse, Element, and LiveKit.
     * It is destructive and intended for initial setup only. If existing Synapse or database data is detected, it aborts unless you explicitly confirm with `DELETE_EXISTING_DATA`.
-6. Start the stack: `docker compose up -d`
+6. If Element Call is enabled and you use LetsEncrypt certificates for TURN/TLS, apply the CoTURN certificate ACLs after the certificates exist and before the first start:
+
+    ```bash
+    sudo apt update && sudo apt install -y acl
+    sudo ./fix-coturn-letsencrypt-acl.sh
+    ```
+
+7. Start the stack: `docker compose up -d`
 
 ## Enabling Element Call
 
@@ -86,6 +93,20 @@ Traefik is pinned through `TRAEFIK_VERSION` in `.env`. Use Traefik `v3.6.1` or n
 
 Some other images still use `latest` by default for compatibility with the current stack. For production deployments, review and pin those images to tested versions before upgrading so container updates do not change behavior unexpectedly.
 
+## Logging
+
+Traefik logs at `INFO` by default. For temporary routing debugging, set this in `.env` and recreate Traefik:
+
+```env
+TRAEFIK_LOG_LEVEL=DEBUG
+```
+
+```bash
+docker compose up -d --force-recreate traefik
+```
+
+Set it back to `INFO` when finished and recreate Traefik again. `DEBUG` logs every routed request and can become very noisy on an active Matrix server.
+
 ## Validation
 
 After setup, these commands are useful for checking the generated Compose configuration and LiveKit container:
@@ -100,26 +121,6 @@ ss -lntup | grep -E ':(3478|5349|7880|7881|50000|49152)'
 ```
 
 `coturn` should listen on `3478` and `5349`, and LiveKit join responses should advertise a TURN/TLS server for `${DOMAIN_LIVEKIT}:5349`.
-
-## Troubleshooting
-
-### LiveKit reports `read /etc/livekit.yaml: is a directory`
-
-This error means Docker mounted a directory at `/etc/livekit.yaml` instead of the generated `livekit.yaml` config file. The current stack configures LiveKit through `LIVEKIT_CONFIG` to avoid stale or mis-mounted `livekit.yaml` files, but older deployments can still hit this.
-
-Check the merged Compose config and the running container mounts:
-
-```bash
-docker compose config | grep -A10 -B3 '/etc/livekit.yaml'
-docker inspect livekit --format '{{range .Mounts}}{{println .Source "->" .Destination "type=" .Type}}{{end}}'
-file livekit.yaml
-```
-
-If `livekit.yaml` is a file in the repository root and the Compose config points to it, recreate the LiveKit container so Docker replaces the bad mount:
-
-```bash
-docker compose stop livekit && docker compose rm -f livekit && docker compose up -d livekit
-```
 
 ## Management
 
@@ -141,15 +142,22 @@ For restrictive networks, LiveKit advertises TURN/TLS on `${DOMAIN_LIVEKIT}:5349
 /etc/letsencrypt/live/${DOMAIN_LIVEKIT}/privkey.pem
 ```
 
-The `coturn/coturn` image runs the TURN process as UID `65534` (`nobody`). LetsEncrypt private keys are often only readable by root, so TURN/TLS can silently fail to listen on `5349/tcp` unless that UID can traverse and read the certificate files. On Debian/Ubuntu hosts, install ACL support and grant the minimum required read/traverse access:
+The `coturn/coturn` image runs the TURN process as UID `65534` (`nobody`). LetsEncrypt private keys are often only readable by root, so TURN/TLS can silently fail to listen on `5349/tcp` unless that UID can traverse and read the certificate files.
+
+On a fresh server, run this after certificates exist and before the first `docker compose up -d`. Do not run it before certificate creation; it fails safely when the LetsEncrypt files are missing.
 
 ```bash
-apt update && apt install -y acl
+sudo apt update && sudo apt install -y acl
 sudo ./fix-coturn-letsencrypt-acl.sh
+```
+
+If CoTURN is already running, restart or recreate it after applying the ACLs because the running process may already have skipped the TLS listener:
+
+```bash
 docker compose restart coturn
 ```
 
-The script applies the same ACLs as these manual commands:
+The ACL script applies the same access as these manual commands:
 
 ```bash
 setfacl -m u:65534:rx /etc/letsencrypt
@@ -159,7 +167,6 @@ setfacl -m u:65534:rx /etc/letsencrypt/archive
 setfacl -m u:65534:rx /etc/letsencrypt/archive/${DOMAIN_LIVEKIT}
 setfacl -m u:65534:r /etc/letsencrypt/archive/${DOMAIN_LIVEKIT}/fullchain*.pem
 setfacl -m u:65534:r /etc/letsencrypt/archive/${DOMAIN_LIVEKIT}/privkey*.pem
-docker compose restart coturn
 ```
 
 Verify from inside the container:
@@ -179,21 +186,6 @@ Verify that the required ports are open in your server provider firewall:
 ```
 
 Port `443/tcp` is usually already used by nginx or Traefik. Use `5349/tcp` for TURN/TLS unless you have a separate IP or a dedicated TURN hostname that can own `443/tcp`.
-
-## Validation
-
-After changing the stack, run:
-
-```bash
-docker compose config --services
-docker compose config | grep -A20 -B5 'LIVEKIT_CONFIG'
-docker compose logs --tail=100 coturn
-docker compose logs --tail=100 livekit
-docker ps --filter name=livekit
-ss -lntup | grep -E ':(3478|5349|7880|7881|50000|49152)'
-```
-
-`coturn` should listen on `3478` and `5349`, and LiveKit join responses should advertise a TURN/TLS server for `${DOMAIN_LIVEKIT}:5349`.
 
 ## Troubleshooting
 
