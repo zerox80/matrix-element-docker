@@ -1,8 +1,9 @@
 #!/bin/bash
 # setup.sh - Infrastructure initialization and configuration generator
 
-echo "WARNING: This script will delete existing data in ./synapse-data and ./db-data."
-echo "Press Ctrl+C to abort or Enter to proceed."
+echo "WARNING: setup.sh is destructive and intended for initial setup only."
+echo "It can recreate Synapse configuration and, when explicitly confirmed, remove existing homeserver and database data."
+echo "Press Ctrl+C to abort or Enter to continue with safety checks."
 read
 
 # Load configuration from .env
@@ -11,6 +12,47 @@ if [ ! -f .env ]; then
     exit 1
 fi
 export $(grep -v '^#' .env | xargs)
+
+# Refuse to destroy existing homeserver or database data without a strong confirmation.
+EXISTING_DATA=()
+PROJECT_BASENAME=$(basename "$PWD" | tr '[:upper:]' '[:lower:]')
+PROJECT_UNDERSCORE=$(echo "$PROJECT_BASENAME" | sed 's/[^a-z0-9]/_/g')
+PROJECT_HYPHEN=$(echo "$PROJECT_BASENAME" | sed 's/[^a-z0-9_-]/-/g')
+DB_VOLUME_CANDIDATES=()
+
+if [ -n "$COMPOSE_PROJECT_NAME" ]; then
+    DB_VOLUME_CANDIDATES+=("${COMPOSE_PROJECT_NAME}_db_data")
+fi
+DB_VOLUME_CANDIDATES+=("${PROJECT_BASENAME}_db_data" "${PROJECT_UNDERSCORE}_db_data" "${PROJECT_HYPHEN}_db_data")
+
+if [ -d synapse-data ] && [ "$(find synapse-data -mindepth 1 -print -quit 2>/dev/null)" ]; then
+    EXISTING_DATA+=("./synapse-data")
+fi
+
+for DB_VOLUME in "${DB_VOLUME_CANDIDATES[@]}"; do
+    if docker volume inspect "$DB_VOLUME" >/dev/null 2>&1; then
+        EXISTING_DATA+=("Docker volume $DB_VOLUME")
+    fi
+done
+
+if [ ${#EXISTING_DATA[@]} -gt 0 ]; then
+    echo "Existing Matrix/Synapse data was detected:"
+    for item in "${EXISTING_DATA[@]}"; do
+        echo "  - $item"
+    done
+    echo
+    echo "setup.sh will not continue because this data may contain your homeserver state."
+    echo "If this is a new disposable deployment and you really want to delete it,"
+    echo "type DELETE_EXISTING_DATA to continue. Anything else aborts."
+    read -r CONFIRM_DELETE
+    if [ "$CONFIRM_DELETE" != "DELETE_EXISTING_DATA" ]; then
+        echo "Aborted without deleting existing data."
+        exit 1
+    fi
+    DELETE_EXISTING_DATA_CONFIRMED=true
+else
+    DELETE_EXISTING_DATA_CONFIRMED=false
+fi
 
 # Connectivity check and IP detection
 EXTERNAL_IP_V4=$(curl -4 -s https://ifconfig.me || echo "")
@@ -33,18 +75,17 @@ sed -i "s/^EXTERNAL_IP=.*/EXTERNAL_IP=$EXTERNAL_IP/" .env 2>/dev/null || echo "E
 
 # Cleanup phase
 echo "Cleaning up existing environment..."
-if [ -n "$COMPOSE_FILE" ]; then
+if [ "$DELETE_EXISTING_DATA_CONFIRMED" = true ]; then
     docker compose down -v
+    rm -rf synapse-data
 else
-    docker compose down -v
+    docker compose down
 fi
-rm -rf synapse-data
-rm -rf config.json
+rm -rf config.json livekit.yaml element-call-config.json
 mkdir -p synapse-data
 
 # Client configuration generation
 echo "Generating Element Web configuration..."
-rm -rf config.json livekit.yaml element-call-config.json
 cat > config.json <<EOF
 {
     "default_server_config": {
