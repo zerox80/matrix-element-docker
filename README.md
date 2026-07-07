@@ -32,6 +32,7 @@ Follow these steps to initialize and start the services:
 2. Copy the example environment file: `cp env.example .env`
 3. Edit the `.env` file and replace the placeholders with your actual domain names and secure passwords.
 4. Execute the firewall setup script: `sudo ./setup_firewall.sh`
+    * For optional UDP mode, use `sudo ./setup_firewall.sh --with-udp`.
 5. Run the initialization script: `./setup.sh`
     * This script automatically detects your public IPv4 and IPv6 addresses.
     * It generates the required configuration files for Synapse, Element, and LiveKit.
@@ -48,10 +49,18 @@ Follow these steps to initialize and start the services:
 ## Enabling Element Call
 
 Element Call is provided by the optional Compose override in `element-call/call.yml`.
-Enable it in `.env` on Linux/macOS with:
+Enable it in `.env` on Linux/macOS with the default TCP/TURN-TLS focused mode:
 
 ```bash
 COMPOSE_FILE=docker-compose.yml:element-call/call.yml
+```
+
+This default avoids exposing the LiveKit UDP media range and is friendlier to restrictive networks where UDP is blocked or throttled.
+
+For better media quality when UDP is allowed by your server firewall and the clients' networks, enable the additional UDP override:
+
+```bash
+COMPOSE_FILE=docker-compose.yml:element-call/call.yml:element-call/udp.yml
 ```
 
 Windows PowerShell users may need semicolon syntax or explicit `-f` flags depending on their Docker Compose environment.
@@ -74,6 +83,7 @@ You can also start the stack with explicit Compose files instead of using `COMPO
 
 ```bash
 docker compose -f docker-compose.yml -f element-call/call.yml up -d
+docker compose -f docker-compose.yml -f element-call/call.yml -f element-call/udp.yml up -d
 ```
 
 Windows PowerShell users may need semicolon syntax in `COMPOSE_FILE` or the explicit `-f` flags above, depending on their Docker Compose environment.
@@ -132,7 +142,7 @@ docker ps --filter name=livekit
 ss -lntup | grep -E ':(3478|5349|7880|7881|50000|49152)'
 ```
 
-`coturn` should listen on `3478` and `5349`, and LiveKit join responses should advertise a TURN/TLS server for `${DOMAIN_LIVEKIT}:5349`.
+`coturn` should listen on `3478` and `5349`, and LiveKit join responses should advertise a TURN/TLS server for `${DOMAIN_LIVEKIT}:5349`. The `50000-50050/udp` LiveKit range should only appear when `element-call/udp.yml` is enabled.
 
 ## Management
 
@@ -147,7 +157,7 @@ Use the provided `manage.sh` script to perform common administrative tasks:
 
 The stack is configured to support dual-stack (IPv4 and IPv6) environments out of the box. The CoTURN service runs in host network mode to ensure maximum compatibility for WebRTC media relay.
 
-For restrictive networks, LiveKit advertises TURN/TLS on `${DOMAIN_LIVEKIT}:5349` in addition to direct UDP/TCP candidates. CoTURN expects readable certificates at:
+For restrictive networks, LiveKit advertises TURN/TLS on `${DOMAIN_LIVEKIT}:5349` in addition to LiveKit TCP on `7881`. CoTURN expects readable certificates at:
 
 ```text
 /etc/letsencrypt/live/${DOMAIN_LIVEKIT}/fullchain.pem
@@ -187,13 +197,21 @@ Verify from inside the container:
 docker exec coturn sh -lc "test -r /etc/letsencrypt/live/${DOMAIN_LIVEKIT}/fullchain.pem && echo cert-ok || echo cert-bad; test -r /etc/letsencrypt/live/${DOMAIN_LIVEKIT}/privkey.pem && echo key-ok || echo key-bad"
 ```
 
-Verify that the required ports are open in your server provider firewall:
+Verify that the required default ports are open in your server provider firewall:
 
 ```text
-3478/tcp and 3478/udp
+3478/tcp
 5349/tcp
-49152-49162/udp
 7880/tcp and 7881/tcp
+443/udp if you use HTTP/3 through Traefik
+```
+
+Optional UDP mode can improve call quality when the network allows UDP. Enable it with `element-call/udp.yml` and open:
+
+```text
+3478/udp
+5349/udp
+49152-49162/udp
 50000-50050/udp
 ```
 
